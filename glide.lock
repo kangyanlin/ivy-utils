@@ -1,0 +1,10 @@
+hash: d054b6973f419f26d1e4ad81f1c3b7c80a1974dd063959dfcdfd743740767de1
+updated: 2018-06-21T18:17:54.276474452+09:00
+imports:
+- name: github.com/inconshreveable/mousetrap
+  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+- name: github.com/spf13/cobra
+  version: ef82de70bb3f60c65fb8eebacbb2d122ef517385
+- name: github.com/spf13/pflag
+  version: 583c0c0531f06d5278b7d917446061adc344b5cd
+testImports: []
