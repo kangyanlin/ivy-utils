@@ -31,8 +31,8 @@ type QualifiedResult struct {
 	Data    map[string][]byte
 }
 
-func (in *QualifiedResult) Do(modulename string) error {
-	cmd := exec.Command("ansible", "all", "-m", modulename, "-t", in.RootDir)
+func (in *QualifiedResult) Do(modulename, inventory string) error {
+	cmd := exec.Command("ansible", "all", "-m", modulename, "-i", inventory, "-t", in.RootDir)
 	err := cmd.Run()
 	if err != nil {
 		return err
@@ -87,23 +87,23 @@ type ResultConstructor struct {
 	wg          *sync.WaitGroup
 }
 
-func (in *ResultConstructor) Run() error {
+func (in *ResultConstructor) Run(inventory string) error {
 	var err0, err1 error
 	in.wg.Add(2)
 	go func() {
-		err0 = in.setupResult.Do("setup")
+		err0 = in.setupResult.Do("canonical", inventory)
 		in.wg.Done()
 	}()
 	go func() {
-		err1 = in.idracResult.Do("idrac")
+		err1 = in.idracResult.Do("idrac", inventory)
 		in.wg.Done()
 	}()
 	in.wg.Wait()
 	if err0 != nil {
-		return fmt.Errorf("Could not collect basic dataset from setup module due to: %v", err0)
+		return fmt.Errorf("Could not collect basic dataset from canonical module due to: %v", err0)
 	}
 	if err1 != nil {
-		return fmt.Errorf("Could not collect basic dataset from idrac module due to: %v", err0)
+		return fmt.Errorf("Could not collect basic dataset from idrac module due to: %v", err1)
 	}
 	dataset := make(map[string]ResultCarrier)
 	for host, data := range in.setupResult.Data {
@@ -117,17 +117,9 @@ func (in *ResultConstructor) Run() error {
 		if err != nil {
 			return err
 		}
-		cv.AnsibleFacts["idrac_address"] = tmpCv.AnsibleFacts["idrac_address"]
-		cv.AnsibleFacts["idrac_model"] = tmpCv.AnsibleFacts["idrac_model"]
-		cv.AnsibleFacts["idrac_bios_version"] = tmpCv.AnsibleFacts["idrac_bios_version"]
-		cv.AnsibleFacts["idrac_bios_boot_mode"] = tmpCv.AnsibleFacts["idrac_bios_boot_mode"]
-		cv.AnsibleFacts["idrac_hostname"] = tmpCv.AnsibleFacts["idrac_hostname"]
-		cv.AnsibleFacts["idrac_system_location_aisle"] = tmpCv.AnsibleFacts["idrac_system_location_aisle"]
-		cv.AnsibleFacts["idrac_system_location_datacenter"] = tmpCv.AnsibleFacts["idrac_system_location_datacenter"]
-		cv.AnsibleFacts["idrac_system_location_rack_name"] = tmpCv.AnsibleFacts["idrac_system_location_rack_name"]
-		cv.AnsibleFacts["idrac_system_location_rack_slot"] = tmpCv.AnsibleFacts["idrac_system_location_rack_slot"]
-		cv.AnsibleFacts["idrac_system_location_room_name"] = tmpCv.AnsibleFacts["idrac_system_location_room_name"]
-		cv.AnsibleFacts["idrac_device_size"] = tmpCv.AnsibleFacts["idrac_device_size"]
+		for k, v := range tmpCv.AnsibleFacts {
+			cv.AnsibleFacts[k] = v
+		}
 		cv.Changed = cv.Changed && tmpCv.Changed
 		dataset[host] = cv
 	}

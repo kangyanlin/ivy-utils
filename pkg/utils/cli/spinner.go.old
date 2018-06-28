@@ -1,0 +1,126 @@
+// Copyright © 2018 Alfred Chou <unioverlord@gmail.com>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package cli
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"sync"
+	"syscall"
+	"time"
+
+	terminal "golang.org/x/crypto/ssh/terminal"
+)
+
+const (
+	// DEFAULT_FRAMES_PER_SECOND indicates the default FPS value while rendering spinner
+	DEFAULT_FRAMES_PER_SECOND uint8 = 10
+)
+
+var DefaultCharset = []string{"|", "/", "-", "\\"}
+
+type Spinner struct {
+	sync.Mutex
+	Prefix    string
+	Suffix    string
+	Charset   []string
+	FrameRate time.Duration
+	runChan   chan struct{}
+	stopOnce  sync.Once
+	Output    io.Writer
+	NoTty     bool
+}
+
+// Start activates the spinner
+func (sp *Spinner) Start() *Spinner {
+	go sp.writer()
+	return sp
+}
+
+// SetFPS set a fixed FPS for custom spinner
+func (sp *Spinner) SetFPS(fps uint8) *Spinner {
+	sp.Lock()
+	sp.FrameRate = time.Duration(1000 / int32(fps))
+	sp.Unlock()
+	return sp
+}
+
+// SetCharset sets custom spinner character set
+func (sp *Spinner) SetCharset(chars []string) *Spinner {
+	sp.Lock()
+	defer sp.Unlock()
+	sp.Charset = chars
+	return sp
+}
+
+// Stop stops and clear-up the spinner
+func (sp *Spinner) Stop() {
+	//prevent multiple calls
+	sp.stopOnce.Do(func() {
+		close(sp.runChan)
+		sp.clearLine()
+	})
+}
+
+// spinner animation
+func (sp *Spinner) animate() {
+	var out string
+	for i := 0; i < len(sp.Charset); i++ {
+		out = sp.Prefix + sp.Charset[i] + sp.Suffix
+		switch {
+		case sp.Output != nil:
+			fmt.Fprint(sp.Output, out)
+			//fmt.Fprint(sp.Output, "\r"+out)
+		case !sp.NoTty:
+			fmt.Fprint(sp.Output, out)
+			//fmt.Print("\r" + out)
+		}
+		time.Sleep(sp.FrameRate)
+		sp.clearLine()
+	}
+}
+
+// write out spinner animation until runChan is closed
+func (sp *Spinner) writer() {
+	sp.animate()
+	for {
+		select {
+		case <-sp.runChan:
+			return
+		default:
+			sp.animate()
+		}
+	}
+}
+
+// workaround for Mac OS < 10 compatibility
+func (sp *Spinner) clearLine() {
+	fmt.Fprintf(sp.Output, "\r\033[K")
+}
+
+// NewSpinner creates a new spinner instance
+func NewSpinner() *Spinner {
+	sp := &Spinner{
+		Charset:   DefaultCharset,
+		FrameRate: time.Duration(1000 / int32(DEFAULT_FRAMES_PER_SECOND)),
+		runChan:   make(chan struct{}),
+		Output:    os.Stderr,
+	}
+	if !terminal.IsTerminal(syscall.Stderr) {
+		sp.NoTty = true
+	}
+	return sp
+}

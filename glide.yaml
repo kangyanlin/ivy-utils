@@ -4,3 +4,15 @@ import:
   version: v0.0.3
 - package: github.com/spf13/pflag
   version: v1.0.1
+- package: github.com/satori/go.uuid
+  version: v1.2.0
+- package: gopkg.in/yaml.v2
+  version: v2.2.1
+- package: go.uber.org/zap
+  version: v1.8.0
+- package: github.com/coreos/etcd
+  version: v3.3.8
+- package: github.com/briandowns/spinner
+  version: 1.1
+- package: github.com/olekukonko/tablewriter
+  version: d4647c9c7a84d847478d890b816b7d8b62b0b279
