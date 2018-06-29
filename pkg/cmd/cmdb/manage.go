@@ -17,6 +17,7 @@ package cmdb
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	cobra "github.com/spf13/cobra"
 	storagecore "github.com/universonic/ivy-utils/pkg/storage/core"
@@ -28,6 +29,16 @@ var manageCmd = &cobra.Command{
 	Use:   "manage",
 	Short: "Manage CMDB host entities",
 	Long:  `Manage CMDB host entities.`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		for _, each := range extraInfoOrig {
+			kv := strings.Split(each, "=")
+			if len(kv) != 2 {
+				return fmt.Errorf("Invalid key-value pair: %s", each)
+			}
+			host.ExtraInfo[kv[0]] = kv[1]
+		}
+		return nil
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		// Validate parameters
 		ok, isAction := validateActionFlags()
@@ -109,6 +120,7 @@ var (
 	host                                           = storagecore.NewHost()
 	hostComment                                    string
 	addHost, removeHost, updateHost, allHosts, yes bool
+	extraInfoOrig                                  []string
 )
 
 func validateActionFlags() (ok, isAction bool) {
@@ -160,5 +172,8 @@ func init() {
 	)
 	manageCmd.Flags().StringVar(
 		&hostComment, "comment", "", "Comment of the node",
+	)
+	manageCmd.Flags().StringSliceVar(
+		&extraInfoOrig, "extra-info", extraInfoOrig, "Comma-seperated key-value pair in 'key=value' format",
 	)
 }

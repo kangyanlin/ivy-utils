@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	core "github.com/universonic/ivy-utils/pkg/storage/core"
 	zap "go.uber.org/zap"
@@ -140,8 +141,12 @@ type InventoryExportTask struct {
 func (in *InventoryExportTask) Execute() (err error) {
 	var rst string
 	for _, each := range in.Hosts {
-		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\" idrac_addr=\"%s\" idrac_user=\"%s\" idrac_pass=\"%s\" comment=\"%s\"\n",
-			each.Hostname, each.Hostname, each.SSHPort, each.SSHUser, each.IPMIAddress, each.IPMIUser, each.IPMIPassword, each.ExtraInfo["comment"])
+		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\" idrac_addr=\"%s\" idrac_user=\"%s\" idrac_pass=\"%s\"",
+			each.Hostname, each.Hostname, each.SSHPort, each.SSHUser, each.IPMIAddress, each.IPMIUser, each.IPMIPassword)
+		for k, v := range each.ExtraInfo {
+			rst += fmt.Sprintf(" %s=\"%v\"", strings.Replace(k, " ", "_", -1), v)
+		}
+		rst += "\n"
 	}
 	fi, e := ioutil.TempFile("", "")
 	if e != nil {

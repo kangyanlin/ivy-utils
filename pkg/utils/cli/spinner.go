@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/crypto/ssh/terminal"
+	terminal "golang.org/x/crypto/ssh/terminal"
 )
 
 // Spinner types.

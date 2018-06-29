@@ -49,19 +49,13 @@ type ReportGenerator struct {
 
 func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, inventoryOnly, html bool, output string) (err error) {
 	sp := cliutil.NewSpinner()
-	gracefulStopSpinner := func() {
-		grace := sp.Stop()
-		if !grace {
-			fmt.Fprintf(os.Stderr, "\r\033[2K")
-		}
-	}
 	printMsgOnStop := func(succeeded bool) {
 		if succeeded {
 			fmt.Fprintf(os.Stderr, "\r"+sp.Prefix+"Completed!\n")
 		} else {
 			fmt.Fprintf(os.Stderr, "\r"+sp.Prefix+"Failed!\n")
 		}
-		gracefulStopSpinner()
+		sp.Stop()
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -73,7 +67,7 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 		} else {
 			fmt.Fprintf(os.Stderr, "Some thing went wrong:\n")
 		}
-		gracefulStopSpinner()
+		sp.Stop()
 	}()
 	var (
 		hosts      []core.Host
@@ -165,7 +159,6 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 		return result, nil
 	}
 	printMsgOnStop(true)
-	// sp = cliutil.NewSpinner()
 	sp.Prefix = fmt.Sprintf("Collect host information (2/%d): ", numOfTasks)
 	sp.Start()
 	at0 := NewAnsibleTask("canonical", inventoryFile)
@@ -183,7 +176,6 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 	}
 	combinedData := ansibleTask.GetResult().(map[string][]byte)
 	printMsgOnStop(true)
-	// sp = cliutil.NewSpinner()
 	sp.Prefix = fmt.Sprintf("Export chunk data (3/%d): ", numOfTasks)
 	sp.Start()
 	var outputDir string
@@ -216,7 +208,6 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 		return nil
 	}
 	printMsgOnStop(true)
-	// sp = cliutil.NewSpinner()
 	sp.Prefix = fmt.Sprintf("Generate html report (4/%d): ", numOfTasks)
 	sp.Start()
 	cmd := exec.Command("ansible-cmdb", "-i", inventoryFile, outputDir)
