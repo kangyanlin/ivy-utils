@@ -150,11 +150,11 @@ func init() {
 		&updateHost, "update", "u", updateHost, "Update an existing host",
 	)
 	manageCmd.Flags().BoolVar(
-		&allHosts, "all", allHosts, "Select all existing hosts. It will be ignored if the '--add' flag was specified.",
+		&allHosts, "all", allHosts, "Select all existing hosts. It will be ignored if an action flag was specified.",
 	)
-	manageCmd.Flags().BoolVarP(
-		&yes, "yes", "y", yes, "Enforcing process to proceed your request anyway.",
-	)
+	// manageCmd.Flags().BoolVarP(
+	// 	&yes, "yes", "y", yes, "Enforcing process to proceed your request anyway.",
+	// )
 	manageCmd.Flags().Uint16Var(
 		&host.SSHPort, "ssh-port", 22, "Port of SSH service",
 	)

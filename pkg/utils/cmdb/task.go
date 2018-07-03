@@ -171,3 +171,54 @@ func NewInventoryExportTask(hosts []core.Host) *InventoryExportTask {
 		Hosts: hosts,
 	}
 }
+
+type RacadmCommandTask struct {
+	Subcommand string
+	Host       core.Host
+	Namespace  []string
+	Param      string
+	Result     map[string]string
+}
+
+func (in *RacadmCommandTask) Execute() (err error) {
+	if in.Host.IPMIAddress == "" {
+		return fmt.Errorf("Given host's IPMI address was not allocated")
+	}
+	cmd := exec.Command("racadm", "-r", in.Host.IPMIAddress, "-u", in.Host.IPMIUser, "-p", in.Host.IPMIPassword, "--nocertwarn", in.Subcommand, strings.Join(in.Namespace, "."))
+	if in.Param != "" {
+		cmd.Args = append(cmd.Args, in.Param)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("Failed to execute command 'racadm' due to: %v", err)
+	}
+	out = bytes.TrimSpace(out)
+	beautifiedOut := bytes.Split(out, []byte("\r\n"))
+	for _, line := range beautifiedOut {
+		if bytes.Contains(line, []byte("=")) {
+			kv := bytes.Split(line, []byte("="))
+			if len(kv) != 2 {
+				continue
+			}
+			if bytes.HasPrefix(kv[0], []byte("#")) {
+				kv[0] = bytes.TrimPrefix(kv[0], []byte("#"))
+			}
+			in.Result[string(kv[0])] = string(kv[1])
+		}
+	}
+	return nil
+}
+
+func (in *RacadmCommandTask) GetResult() interface{} {
+	return in.Result
+}
+
+func NewRacadmCommandTask(subcommand string, host core.Host, param string, namespace ...string) *RacadmCommandTask {
+	return &RacadmCommandTask{
+		Subcommand: subcommand,
+		Host:       host,
+		Param:      param,
+		Namespace:  namespace,
+		Result:     make(map[string]string),
+	}
+}

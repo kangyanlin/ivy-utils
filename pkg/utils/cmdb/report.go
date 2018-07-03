@@ -51,9 +51,9 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 	sp := cliutil.NewSpinner()
 	printMsgOnStop := func(succeeded bool) {
 		if succeeded {
-			fmt.Fprintf(os.Stderr, "\r"+sp.Prefix+"Completed!\n")
+			fmt.Fprintf(os.Stdout, "\r"+sp.Prefix+"Completed!\n")
 		} else {
-			fmt.Fprintf(os.Stderr, "\r"+sp.Prefix+"Failed!\n")
+			fmt.Fprintf(os.Stdout, "\r"+sp.Prefix+"Failed!\n")
 		}
 		sp.Stop()
 	}
@@ -63,9 +63,9 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 		}
 		printMsgOnStop(err == nil)
 		if err == nil {
-			fmt.Fprintf(os.Stderr, "Accomplished!\n")
+			fmt.Fprintf(os.Stdout, "Accomplished!\n")
 		} else {
-			fmt.Fprintf(os.Stderr, "Some thing went wrong:\n")
+			fmt.Fprintf(os.Stdout, "Something went wrong:\n")
 		}
 		sp.Stop()
 	}()

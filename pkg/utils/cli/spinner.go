@@ -66,7 +66,7 @@ func (sp *Spinner) Start() *Spinner {
 	go func() {
 		for atomic.LoadUint64(&sp.active) > 0 {
 			fmt.Fprintf(sp.Writer, "\r\033[K%s%s%s", sp.Prefix, sp.next(), sp.Suffix)
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 		}
 	}()
 	return sp

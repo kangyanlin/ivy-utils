@@ -38,6 +38,7 @@ var reportCmd = &cobra.Command{
 		err = generator.GenerateAndSaveAs(args, allHosts, inventoryOnly, html, output)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not generate report due to: %v\n", err)
+			os.Exit(20)
 		}
 	},
 }
