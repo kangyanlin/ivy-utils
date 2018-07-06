@@ -50,48 +50,64 @@ class ActionModule(ActionBase):
         facts['idrac_system_location_rack_slot'] = copy_from_dict_in_peace("Rack.Slot", system_location)
         facts['idrac_system_location_room_name'] = copy_from_dict_in_peace("RoomName", system_location)
         facts['idrac_device_size'] = copy_from_dict_in_peace("DeviceSize", system_location)
-        mem_sensor_info = manager.get_mem_sensor_info()
-        total_mem_slots = 0
-        available_mem_slots = 0
-        used_mem_slots = 0
-        for each in mem_sensor_info.values():
-            if each['state'] == 'Presence_Detected':
-                used_mem_slots += 1
-            if each['state'] == 'Absent':
-                available_mem_slots += 1
-            total_mem_slots += 1
-        facts['idrac_total_mem_slots'] = total_mem_slots
-        facts['idrac_available_mem_slots'] = available_mem_slots
-        facts['idrac_used_mem_slots'] = used_mem_slots
         mem_settings = manager.get_mem_settings()
-        facts['idrac_mem_capacity'] = copy_from_dict_in_peace("SysMemSize", mem_settings)
-        vdisks = manager.get_virtual_disks()
+        facts['idrac_installed_memory'] = copy_from_dict_in_peace("SysMemSize", mem_settings)
+        hwinventory = manager.get_hardware_inventory()
+        try:
+            facts['idrac_maximum_dimm'] = int(hwinventory['System']['Embedded.1']['MaxDIMMSlots'])
+            facts['idrac_populated_dimm'] = int(hwinventory['System']['Embedded.1']['PopulatedDIMMSlots'])
+        except KeyError:
+            facts['idrac_populated_dimm'] = None
+            facts['idrac_maximum_dimm'] = None
+        dimm_inventory = []
+        facts['idrac_dimm_inventory'] = dimm_inventory
+        if 'DIMM' in hwinventory:
+            for each in hwinventory['DIMM'].values():
+                newItem = dict()
+                try:
+                    newItem['name'] = each['DeviceDescription']
+                    newItem['manufacturer'] = each['Manufacturer']
+                    newItem['type'] = each['MemoryType']
+                    newItem['model'] = each['Model']
+                    newItem['part_number'] = each['PartNumber']
+                    newItem['status'] = each['PrimaryStatus']
+                    newItem['serial_number'] = each['SerialNumber']
+                    newItem['size'] = each['Size']
+                    newItem['speed'] = each['Speed']
+                except KeyError:
+                    continue
+                dimm_inventory.append(newItem)
         vdisk_facts = []
-        for each in vdisks.values():
-            newVD = dict()
-            newVD['name'] = each['Name']
-            newVD['description'] = each['DeviceDescription']
-            newVD['status'] = each['Status']
-            newVD['state'] = each['State']
-            newVD['layout'] = each['Layout']
-            newVD['size'] = each['Size']
-            newVD['media_type'] = each['MediaType']
-            vdisk_facts.append(newVD)
-        facts['idrac_virtual_disks'] = vdisk_facts
-        pdisks = manager.get_physical_disks()
         pdisk_facts = []
-        for each in pdisks.values():
-            newPD = dict()
-            newPD['name'] = each['Name']
-            newPD['description'] = each['DeviceDescription']
-            newPD['status'] = each['Status']
-            newPD['state'] = each['State']
-            newPD['product_id'] = each['ProductId']
-            newPD['serial_number'] = each['SerialNumber']
-            newPD['size'] = each['Size']
-            newPD['media_type'] = each['MediaType']
-            pdisk_facts.append(newPD)
+        facts['idrac_virtual_disks'] = vdisk_facts
         facts['idrac_physical_disks'] = pdisk_facts
+        if 'Disk' in hwinventory:
+            for each in hwinventory['Disk'].values():
+                newDisk = dict()
+                try:
+                    if each['Device Type'] == 'PhysicalDisk':
+                        newDisk['name'] = each['Model']
+                        newDisk['description'] = each['DeviceDescription']
+                        newDisk['status'] = each['PrimaryStatus']
+                        newDisk['state'] = each['RaidStatus']
+                        newDisk['serial_number'] = each['SerialNumber']
+                        size = each['SizeInBytes'].split()
+                        newDisk['size'] = sizeof_fmt(int(size[0]))
+                        newDisk['media_type'] = each['MediaType']
+                        pdisk_facts.append(newDisk)
+                    elif each['Device Type'] == 'VirtualDisk':
+                        newDisk['name'] = each['Name']
+                        newDisk['description'] = each['DeviceDescription']
+                        newDisk['status'] = each['PrimaryStatus']
+                        newDisk['state'] = each['RAIDStatus']
+                        newDisk['layout'] = each['RAIDTypes']
+                        size = each['SizeInBytes'].split()
+                        newDisk['size'] = sizeof_fmt(int(size[0]))
+                        newDisk['media_type'] = each['MediaType']
+                        vdisk_facts.append(newDisk)
+                except KeyError:
+                    continue
+
         return result
 
 class IDracManager:
@@ -195,6 +211,37 @@ class IDracManager:
                 i += 1
         return qualified_result
 
+    def get_hardware_inventory(self):
+        output = self._invoke_racadm('hwinventory', None)
+        qualified_result = dict()
+        started = False
+        group = ''
+        header = ''
+        sections = -1
+        for line in output:
+            if not started:
+                if line.startswith('----'):
+                    started = True
+                continue
+            if line.startswith('[InstanceID: '):
+                sections += 1
+                title = line[13:len(line)-1]
+                ss = title.split('.', 1)
+                group = ss[0]
+                header = ss[1]
+                if not group in qualified_result:
+                    qualified_result[group] = dict()
+                if not header in qualified_result[group]:
+                    qualified_result[group][header] = dict()
+                continue
+            if not line or not '=' in line:
+                continue
+            kv = line.split('=')
+            k = kv[0].strip()
+            v = kv[1].strip()
+            qualified_result[group][header][k] = v
+        return qualified_result
+
     def get_virtual_disks(self):
         output = self._invoke_racadm('storage', None, 'get', 'vdisks', '-o')
         qualified_result = dict()
@@ -293,6 +340,19 @@ class IDracManager:
         return headers
 
 def copy_from_dict_in_peace(key, dictionary):
-    if key in dictionary:
-        return dictionary[key]
-    return ''
+    v = ''
+    try:
+        v = dictionary[key]
+    except KeyError:
+        v = 'N/A'
+    return v
+
+def sizeof_fmt(num, suffix='B'):
+    '''
+    Calculate given numeber of bytes to human-readable.
+    '''
+    for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f %s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f %s%s" % (num, 'Yi', suffix)
