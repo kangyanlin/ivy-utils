@@ -258,7 +258,7 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all bool, m
 	cmd := exec.Command("ansible-cmdb", "-i", inventoryFile, outputDir)
 	tpl, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("Could not generate html due to: %v", err)
+		return fmt.Errorf("Could not generate html due to: %v\n\n%s", err, tpl)
 	}
 	tmpReader := bytes.NewReader(tpl)
 	outputHTML, err := os.Create(output)

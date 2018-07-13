@@ -155,6 +155,9 @@ func init() {
 	// manageCmd.Flags().BoolVarP(
 	// 	&yes, "yes", "y", yes, "Enforcing process to proceed your request anyway.",
 	// )
+	manageCmd.Flags().StringVar(
+		&host.SSHAddress, "ssh-address", host.SSHAddress, "IP address that SSH service is listening on",
+	)
 	manageCmd.Flags().Uint16Var(
 		&host.SSHPort, "ssh-port", 22, "Port of SSH service",
 	)

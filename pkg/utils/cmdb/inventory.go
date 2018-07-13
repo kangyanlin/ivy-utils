@@ -15,6 +15,9 @@
 package cmdb
 
 import (
+	"fmt"
+	"net"
+
 	core "github.com/universonic/ivy-utils/pkg/storage/core"
 )
 
@@ -23,6 +26,12 @@ type Inventory struct {
 }
 
 func (in *Inventory) Add(host core.Host) error {
+	if host.SSHAddress != "" {
+		ip := net.ParseIP(host.SSHAddress)
+		if ip == nil {
+			return fmt.Errorf("Invalid IP address: %s", host.SSHAddress)
+		}
+	}
 	_, ok := host.ExtraInfo["comment"]
 	if !ok {
 		host.ExtraInfo["comment"] = ""
@@ -39,6 +48,12 @@ func (in *Inventory) List() ([]core.Host, error) {
 }
 
 func (in *Inventory) Update(host core.Host) error {
+	if host.SSHAddress != "" {
+		ip := net.ParseIP(host.SSHAddress)
+		if ip == nil {
+			return fmt.Errorf("Invalid IP address: %s", host.SSHAddress)
+		}
+	}
 	return in.Storage.UpdateHost(host.Hostname, func(h core.Host) (core.Host, error) {
 		host.GUID = h.GUID
 		if host.SSHAddress == "" {

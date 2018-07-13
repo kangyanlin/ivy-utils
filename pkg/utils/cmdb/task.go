@@ -94,9 +94,16 @@ func (in *AnsibleTask) Execute() error {
 		panic(err)
 	}
 	cmd := exec.Command("ansible", "all", "-m", in.Module, "-i", in.InventoryFile, "-t", dir)
-	err = cmd.Run()
+	reason, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("error occurred while calling ansible module '%s': %v", in.Module, err)
+		parsedReason := bytes.Split(reason, []byte("\n"))
+		var finalReason []byte
+		if len(parsedReason) > 16 {
+			finalReason = bytes.Join(parsedReason[len(parsedReason)-17:], []byte("\n"))
+		} else {
+			finalReason = reason
+		}
+		return fmt.Errorf("error occurred while calling ansible module '%s': %v\n\n%s", in.Module, err, finalReason)
 	}
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -141,8 +148,14 @@ type InventoryExportTask struct {
 func (in *InventoryExportTask) Execute() (err error) {
 	var rst string
 	for _, each := range in.Hosts {
+		var sshAddr string
+		if each.SSHAddress == "" {
+			sshAddr = each.Hostname
+		} else {
+			sshAddr = each.SSHAddress
+		}
 		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\" ipmi_addr=\"%s\" ipmi_user=\"%s\" ipmi_pass=\"%s\"",
-			each.Hostname, each.Hostname, each.SSHPort, each.SSHUser, each.IPMIAddress, each.IPMIUser, each.IPMIPassword)
+			each.Hostname, sshAddr, each.SSHPort, each.SSHUser, each.IPMIAddress, each.IPMIUser, each.IPMIPassword)
 		for k, v := range each.ExtraInfo {
 			rst += fmt.Sprintf(" %s=\"%v\"", strings.Replace(k, " ", "_", -1), v)
 		}
