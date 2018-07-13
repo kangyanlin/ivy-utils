@@ -35,7 +35,23 @@ var reportCmd = &cobra.Command{
 		}
 		defer storage.Close()
 		generator := cmdbutil.NewReportGenerator(storage)
-		err = generator.GenerateAndSaveAs(args, allHosts, inventoryOnly, html, output)
+		var mode cmdbutil.ReportMode
+		if inventoryOnly {
+			mode = mode | cmdbutil.ExportMode
+		}
+		if jsoned {
+			mode = mode | cmdbutil.JSONMode
+		}
+		if xlsx {
+			mode = mode | cmdbutil.XLSXMode
+		}
+		if html {
+			mode = mode | cmdbutil.HTMLMode
+		}
+		if mode == 0 {
+			mode = cmdbutil.AnsibleMode
+		}
+		err = generator.GenerateAndSaveAs(args, allHosts, mode, output)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Could not generate report due to: %v\n", err)
 			os.Exit(20)
@@ -44,17 +60,23 @@ var reportCmd = &cobra.Command{
 }
 
 var (
-	inventoryOnly, html bool
+	inventoryOnly, html, jsoned, xlsx bool
 )
 
 func init() {
 	cmdbCmd.AddCommand(reportCmd)
 
-	reportCmd.Flags().BoolVar(
-		&inventoryOnly, "inventory-only", inventoryOnly, "Export inventory file only.",
-	)
 	reportCmd.Flags().StringVarP(
 		&output, "output", "o", output, "Output file or directory.",
+	)
+	reportCmd.Flags().BoolVar(
+		&inventoryOnly, "inventory", inventoryOnly, "Export as a inventory file only.",
+	)
+	reportCmd.Flags().BoolVar(
+		&jsoned, "json", jsoned, "Generate a combined json report file.",
+	)
+	reportCmd.Flags().BoolVar(
+		&xlsx, "xlsx", xlsx, "Generate a Microsoft(R) Excel format (.xlsx) report file.",
 	)
 	reportCmd.Flags().BoolVar(
 		&html, "html", html, "Generate a static html report with ansible-cmdb.",

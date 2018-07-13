@@ -1,6 +1,8 @@
-hash: a7d2aed8f1153525193ec567dc6f80a3fc28944d27c529cf87fcc83377375b6f
-updated: 2018-06-28T10:36:55.792887431+09:00
+hash: 918e6f01b3dcc0c6c3a15dbba93530500e46ad8f77a0c07ce34a1a3c8fdfbb55
+updated: 2018-07-11T17:49:18.452135598+09:00
 imports:
+- name: github.com/360EntSecGroup-Skylar/excelize
+  version: eb62256d165607c6877ce88efbba10c119137b3d
 - name: github.com/briandowns/spinner
   version: 5b875a9171af19dbde37e70a8fcbe2ebd7285e05
 - name: github.com/coreos/etcd
@@ -15,8 +17,6 @@ imports:
   - pkg/tlsutil
   - pkg/transport
   - pkg/types
-- name: github.com/fatih/color
-  version: 2d684516a8861da43017284349b7e303e809ac21
 - name: github.com/gogo/protobuf
   version: 342cbe0a04158f6dcb03ca0079991a51a4248c02
   subpackages:
@@ -34,10 +34,6 @@ imports:
   - ptypes/timestamp
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
-- name: github.com/mattn/go-colorable
-  version: efa589957cd060542a26d2dd7832fd6a6c6c3ade
-- name: github.com/mattn/go-isatty
-  version: 6ca4dbf54d38eea1a992b3c722a76a5d1c4cb25c
 - name: github.com/mattn/go-runewidth
   version: ce7b0b5c7b45a81508558cd1dba6bb1e4ddb51bb
 - name: github.com/olekukonko/tablewriter

@@ -141,7 +141,7 @@ type InventoryExportTask struct {
 func (in *InventoryExportTask) Execute() (err error) {
 	var rst string
 	for _, each := range in.Hosts {
-		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\" idrac_addr=\"%s\" idrac_user=\"%s\" idrac_pass=\"%s\"",
+		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\" ipmi_addr=\"%s\" ipmi_user=\"%s\" ipmi_pass=\"%s\"",
 			each.Hostname, each.Hostname, each.SSHPort, each.SSHUser, each.IPMIAddress, each.IPMIUser, each.IPMIPassword)
 		for k, v := range each.ExtraInfo {
 			rst += fmt.Sprintf(" %s=\"%v\"", strings.Replace(k, " ", "_", -1), v)

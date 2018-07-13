@@ -21,46 +21,47 @@ class ActionModule(ActionBase):
         del tmp # tmp no longer has any effect
 
         # TODO: args parsers here
-        idrac_addr = task_vars["idrac_addr"]
-        idrac_user = task_vars["idrac_user"]
-        idrac_pass = task_vars["idrac_pass"]
+        ipmi_addr = task_vars["ipmi_addr"]
+        ipmi_user = task_vars["ipmi_user"]
+        ipmi_pass = task_vars["ipmi_pass"]
 
         # TODO: args validators here
 
         result['changed'] = False
         facts = dict() # initial a new dict pointer to store bundled results
         result['ansible_facts'] = facts
-        facts['idrac_address'] = idrac_addr
+        facts['ipmi_type'] = 'idrac'
+        facts['ipmi_address'] = ipmi_addr
 
         manager = IDracManager(
-            idrac_addr=idrac_addr,
-            idrac_user=idrac_user,
-            idrac_pass=idrac_pass
+            idrac_addr=ipmi_addr,
+            idrac_user=ipmi_user,
+            idrac_pass=ipmi_pass
         )
         # OPTIMIZE: use async workers
         power_state = manager.get_power_state()
-        facts['idrac_model'] = copy_from_dict_in_peace("Model", power_state)
-        facts['idrac_bios_version'] = copy_from_dict_in_peace("BiosVersion", power_state)
-        facts['idrac_bios_boot_mode'] = manager.bios_boot_mode
-        facts['idrac_hostname'] = copy_from_dict_in_peace("HostName", power_state)
+        facts['ipmi_model'] = copy_from_dict_in_peace("Model", power_state)
+        facts['ipmi_bios_version'] = copy_from_dict_in_peace("BiosVersion", power_state)
+        facts['ipmi_bios_boot_mode'] = manager.bios_boot_mode
+        facts['ipmi_hostname'] = copy_from_dict_in_peace("HostName", power_state)
         system_location = manager.get_system_location()
-        facts['idrac_system_location_aisle'] = copy_from_dict_in_peace("Aisle", system_location)
-        facts['idrac_system_location_datacenter'] = copy_from_dict_in_peace("DataCenter", system_location)
-        facts['idrac_system_location_rack_name'] = copy_from_dict_in_peace("Rack.Name", system_location)
-        facts['idrac_system_location_rack_slot'] = copy_from_dict_in_peace("Rack.Slot", system_location)
-        facts['idrac_system_location_room_name'] = copy_from_dict_in_peace("RoomName", system_location)
-        facts['idrac_device_size'] = copy_from_dict_in_peace("DeviceSize", system_location)
+        facts['ipmi_system_location_aisle'] = copy_from_dict_in_peace("Aisle", system_location)
+        facts['ipmi_system_location_datacenter'] = copy_from_dict_in_peace("DataCenter", system_location)
+        facts['ipmi_system_location_rack_name'] = copy_from_dict_in_peace("Rack.Name", system_location)
+        facts['ipmi_system_location_rack_slot'] = copy_from_dict_in_peace("Rack.Slot", system_location)
+        facts['ipmi_system_location_room_name'] = copy_from_dict_in_peace("RoomName", system_location)
+        facts['ipmi_device_size'] = copy_from_dict_in_peace("DeviceSize", system_location)
         mem_settings = manager.get_mem_settings()
-        facts['idrac_installed_memory'] = copy_from_dict_in_peace("SysMemSize", mem_settings)
+        facts['ipmi_installed_memory'] = copy_from_dict_in_peace("SysMemSize", mem_settings)
         hwinventory = manager.get_hardware_inventory()
         try:
-            facts['idrac_maximum_dimm'] = int(hwinventory['System']['Embedded.1']['MaxDIMMSlots'])
-            facts['idrac_populated_dimm'] = int(hwinventory['System']['Embedded.1']['PopulatedDIMMSlots'])
+            facts['ipmi_maximum_dimms'] = int(hwinventory['System']['Embedded.1']['MaxDIMMSlots'])
+            facts['ipmi_populated_dimms'] = int(hwinventory['System']['Embedded.1']['PopulatedDIMMSlots'])
         except KeyError:
-            facts['idrac_populated_dimm'] = None
-            facts['idrac_maximum_dimm'] = None
+            facts['ipmi_populated_dimms'] = None
+            facts['ipmi_maximum_dimms'] = None
         dimm_inventory = []
-        facts['idrac_dimm_inventory'] = dimm_inventory
+        facts['ipmi_dimms'] = dimm_inventory
         if 'DIMM' in hwinventory:
             for each in hwinventory['DIMM'].values():
                 newItem = dict()
@@ -79,8 +80,8 @@ class ActionModule(ActionBase):
                 dimm_inventory.append(newItem)
         vdisk_facts = []
         pdisk_facts = []
-        facts['idrac_virtual_disks'] = vdisk_facts
-        facts['idrac_physical_disks'] = pdisk_facts
+        facts['ipmi_virtual_disks'] = vdisk_facts
+        facts['ipmi_physical_disks'] = pdisk_facts
         if 'Disk' in hwinventory:
             for each in hwinventory['Disk'].values():
                 newDisk = dict()

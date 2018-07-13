@@ -307,11 +307,11 @@
     for hostname, host in hosts.items():
       if 'ansible_facts' not in host:
         continue
-      #index = host['ansible_facts']['idrac_system_location_datacenter'] + host['ansible_facts']['idrac_system_location_room_name'] + host['ansible_facts']['idrac_system_location_aisle'] + host['ansible_facts']['idrac_system_location_rack_name']
-      index = host['ansible_facts']['idrac_system_location_datacenter'] + host['ansible_facts']['idrac_system_location_room_name'] + host['ansible_facts']['idrac_system_location_rack_name']
+      #index = host['ansible_facts']['ipmi_system_location_datacenter'] + host['ansible_facts']['ipmi_system_location_room_name'] + host['ansible_facts']['ipmi_system_location_aisle'] + host['ansible_facts']['ipmi_system_location_rack_name']
+      index = host['ansible_facts']['ipmi_system_location_datacenter'] + host['ansible_facts']['ipmi_system_location_room_name'] + host['ansible_facts']['ipmi_system_location_rack_name']
       if index not in racks:
         racks[index] = dict()
-      racks[index][int(host['ansible_facts']['idrac_system_location_rack_slot'])] = host['ansible_facts']
+      racks[index][int(host['ansible_facts']['ipmi_system_location_rack_slot'])] = host['ansible_facts']
   %>
   <div id="host_locations">
     <h2 class="toggle-collapse collapsed" id="host_locations_toggler" data-host-name="host_locations_toggler">Host location</h2>
@@ -328,19 +328,19 @@
                 % for k in keys:
                   <%
                     hostname = rack[k]['ansible_nodename']
-                    datacenter = rack[k]['idrac_system_location_datacenter']
+                    datacenter = rack[k]['ipmi_system_location_datacenter']
                     if not datacenter:
                       datacenter = '-'
-                    room = rack[k]['idrac_system_location_room_name']
+                    room = rack[k]['ipmi_system_location_room_name']
                     if not room:
                       room = '-'
-                    aisle = rack[k]['idrac_system_location_aisle']
+                    aisle = rack[k]['ipmi_system_location_aisle']
                     if not aisle:
                       aisle = '-'
-                    rackname = rack[k]['idrac_system_location_rack_name']
+                    rackname = rack[k]['ipmi_system_location_rack_name']
                     if not rackname:
                       rackname = '-'
-                    rackslot = rack[k]['idrac_system_location_rack_slot']
+                    rackslot = rack[k]['ipmi_system_location_rack_slot']
                     if not rackslot:
                       rackslot = '-'
                   %>
@@ -659,11 +659,11 @@
 </%def>
 
 <%def name="col_rack_name(host, **kwargs)">
-  ${jsonxs(host, 'ansible_facts.idrac_system_location_rack_name',  default='')}
+  ${jsonxs(host, 'ansible_facts.ipmi_system_location_rack_name',  default='')}
 </%def>
 
 <%def name="col_rack_slot(host, **kwargs)">
-  ${jsonxs(host, 'ansible_facts.idrac_system_location_rack_slot',  default='')}
+  ${jsonxs(host, 'ansible_facts.ipmi_system_location_rack_slot',  default='')}
 </%def>
 
 <%def name="col_cpu_type(host, **kwargs)">
@@ -700,7 +700,7 @@
 
 <%def name="col_memory_individual_dimms(host, **kwargs)">
   <%
-    dimms = sorted(jsonxs(host, 'ansible_facts.idrac_dimm_inventory',  default=0), key=lambda u: u['name'])
+    dimms = sorted(jsonxs(host, 'ansible_facts.ipmi_dimms',  default=0), key=lambda u: u['name'])
     result = dict()
     for each in dimms:
       newItem = dict()
@@ -713,16 +713,16 @@
 </%def>
 
 <%def name="col_memory_populated_dimms(host, **kwargs)">
-  ${jsonxs(host, 'ansible_facts.idrac_populated_dimm',  default=0)} / ${jsonxs(host, 'ansible_facts.idrac_maximum_dimm',  default=0)}
+  ${jsonxs(host, 'ansible_facts.ipmi_populated_dimms',  default=0)} / ${jsonxs(host, 'ansible_facts.ipmi_maximum_dimms',  default=0)}
 </%def>
 
 <%def name="col_memory_installed_capacity(host, **kwargs)">
-  ${jsonxs(host, 'ansible_facts.idrac_installed_memory',  default='')}
+  ${jsonxs(host, 'ansible_facts.ipmi_installed_memory',  default='')}
 </%def>
 
 <%def name="col_virtual_disk(host, **kwargs)">
   <%
-    vdisks = jsonxs(host, 'ansible_facts.idrac_virtual_disks',  default=[])
+    vdisks = jsonxs(host, 'ansible_facts.ipmi_virtual_disks',  default=[])
     result = dict()
     for i in vdisks:
         result[i['name']] = dict()
@@ -733,7 +733,7 @@
 
 <%def name="col_physical_disk(host, **kwargs)">
     <%
-    pdisks = jsonxs(host, 'ansible_facts.idrac_physical_disks',  default=[])
+    pdisks = jsonxs(host, 'ansible_facts.ipmi_physical_disks',  default=[])
     result = dict()
     for i in pdisks:
         k = i['name']
@@ -761,7 +761,7 @@
 </%def>
 
 <%def name="col_network_ipmi_address(host, **kwargs)">
-  ${jsonxs(host, 'ansible_facts.idrac_address', default='')}
+  ${jsonxs(host, 'ansible_facts.ipmi_address', default='')}
 </%def>
 
 <%def name="col_logical_interfaces(host, **kwargs)">
@@ -964,29 +964,29 @@
     </tr>
     <tr>
       <th>Model (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_model',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_model',  default='')}</td>
     </tr>
     <tr>
       <th>BMC Address (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_address',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_address',  default='')}</td>
     </tr>
     <tr>
       <th>Hostname (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_hostname',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_hostname',  default='')}</td>
     </tr>
     <tr>
       <th>BIOS version (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_bios_version',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_bios_version',  default='')}</td>
     </tr>
     <tr>
       <th>BIOS boot mode (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_bios_boot_mode',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_bios_boot_mode',  default='')}</td>
     </tr>
     <tr>
       <th>Device Size (iDrac)</th>
       <td>
-        % if jsonxs(host, 'ansible_facts.idrac_device_size',  default=''):
-          ${'%sU' % jsonxs(host, 'ansible_facts.idrac_device_size',  default='')}
+        % if jsonxs(host, 'ansible_facts.ipmi_device_size',  default=''):
+          ${'%sU' % jsonxs(host, 'ansible_facts.ipmi_device_size',  default='')}
         % else:
           -
         % endif
@@ -994,23 +994,23 @@
     </tr>
     <tr>
       <th>System location - Aisle (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_system_location_aisle',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_system_location_aisle',  default='')}</td>
     </tr>
     <tr>
       <th>System location - Data Center (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_system_location_datacenter',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_system_location_datacenter',  default='')}</td>
     </tr>
     <tr>
       <th>System location - Rack Name (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_system_location_rack_name',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_system_location_rack_name',  default='')}</td>
     </tr>
     <tr>
       <th>System location - Rack Slot (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_system_location_rack_slot',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_system_location_rack_slot',  default='')}</td>
     </tr>
     <tr>
       <th>System location - Room Name (iDrac)</th>
-      <td>${jsonxs(host, 'ansible_facts.idrac_system_location_room_name',  default='')}</td>
+      <td>${jsonxs(host, 'ansible_facts.ipmi_system_location_room_name',  default='')}</td>
     </tr>
   </table>
   </div>
@@ -1037,7 +1037,7 @@
     <table>
       % for var_name in sorted(host.get('hostvars', {}).keys()):
         <%
-        if var_name.startswith('idrac_'):
+        if var_name.startswith('ipmi_') or var_name.startswith('idrac_'):
             continue
         var_value = host['hostvars'][var_name]
         %>

@@ -24,30 +24,66 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 
+	excel "github.com/360EntSecGroup-Skylar/excelize"
 	core "github.com/universonic/ivy-utils/pkg/storage/core"
 	cliutil "github.com/universonic/ivy-utils/pkg/utils/cli"
 	zap "go.uber.org/zap"
 )
 
-var (
-	ErrUnmergableAnsibleResult = errors.New("Given ansible results' inventory did not match!")
+const (
+	DEF_XLSX_SHEET = "Overview"
 )
 
-type AnsibleResultCarrier struct {
-	AnsibleFacts map[string]interface{} `json:"ansible_facts,omitempty"`
-	Changed      bool                   `json:"changed,omitempty"`
+type ReportMode byte
+
+func (mod ReportMode) IsMode(mode ReportMode) bool {
+	return mod == mode
 }
 
-func NewAnsibleResultCarrier() *AnsibleResultCarrier {
-	return new(AnsibleResultCarrier)
+func (mod ReportMode) Validate() error {
+	var matched bool
+	available := []ReportMode{ExportMode, AnsibleMode, JSONMode, XLSXMode, HTMLMode}
+	for i := range available {
+		rst := mod.IsMode(available[i])
+		if rst {
+			if matched {
+				return ErrMultipleReportMode
+			}
+			matched = true
+		}
+	}
+	if !matched {
+		return ErrUnknownReportMode
+	}
+	return nil
 }
+
+const (
+	ExportMode ReportMode = 0x01 << iota
+	AnsibleMode
+	JSONMode
+	XLSXMode
+	HTMLMode
+)
+
+var (
+	ErrUnknownReportMode       = errors.New("Unknown report mode")
+	ErrMultipleReportMode      = errors.New("Multiple report mode detected and only a single mode is acceptable")
+	ErrUnmergableAnsibleResult = errors.New("Given ansible results' inventory did not match!")
+)
 
 type ReportGenerator struct {
 	inventory *Inventory
 }
 
-func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, inventoryOnly, html bool, output string) (err error) {
+func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all bool, mode ReportMode, output string) (err error) {
+	err = mode.Validate()
+	if err != nil {
+		return
+	}
 	sp := cliutil.NewSpinner()
 	printMsgOnStop := func(succeeded bool) {
 		if succeeded {
@@ -73,9 +109,9 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 		hosts      []core.Host
 		numOfTasks int
 	)
-	if inventoryOnly {
+	if mode.IsMode(ExportMode) {
 		numOfTasks = 1
-	} else if html {
+	} else if mode.IsMode(HTMLMode) {
 		numOfTasks = 4
 	} else {
 		numOfTasks = 3
@@ -103,7 +139,7 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 	}
 	inventoryFile := inventoryTask.GetResult().(string)
 	defer os.Remove(inventoryFile)
-	if inventoryOnly {
+	if mode.IsMode(ExportMode) {
 		to, err := os.Create(output)
 		if err != nil {
 			return err
@@ -136,13 +172,13 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 			}
 		}
 		for k, v := range input1 {
-			var cv0 ResultCarrier
-			err := json.Unmarshal(input0[k], &cv0)
+			cv0 := NewAnsibleResultMergableUnit()
+			err := json.Unmarshal(input0[k], cv0)
 			if err != nil {
 				return nil, err
 			}
-			var cv1 ResultCarrier
-			err = json.Unmarshal(v, &cv1)
+			cv1 := NewAnsibleResultMergableUnit()
+			err = json.Unmarshal(v, cv1)
 			if err != nil {
 				return nil, err
 			}
@@ -162,7 +198,7 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 	sp.Prefix = fmt.Sprintf("Collect host information (2/%d): ", numOfTasks)
 	sp.Start()
 	at0 := NewAnsibleTask("canonical", inventoryFile)
-	at1 := NewAnsibleTask("idrac", inventoryFile)
+	at1 := NewAnsibleTask("ipmi", inventoryFile)
 	ansibleTask := NewParallelTasks([]Task{at0, at1}, func() interface{} {
 		result, err := merge(at0.Result, at1.Result)
 		if err != nil {
@@ -178,8 +214,17 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 	printMsgOnStop(true)
 	sp.Prefix = fmt.Sprintf("Export chunk data (3/%d): ", numOfTasks)
 	sp.Start()
+	// Detect if it is in JSONMode or XLSXMode
+	if mode.IsMode(JSONMode) || mode.IsMode(XLSXMode) {
+		var excel bool
+		if mode.IsMode(XLSXMode) {
+			excel = true
+		}
+		return in.QualifyReport(combinedData, excel, output)
+	}
+	// It is AnsibleMode or HTMLMode
 	var outputDir string
-	if html {
+	if mode.IsMode(HTMLMode) {
 		outputDir, err = ioutil.TempDir("", "")
 		if err != nil {
 			panic(err)
@@ -204,7 +249,7 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 			return err
 		}
 	}
-	if !html {
+	if !mode.IsMode(HTMLMode) {
 		return nil
 	}
 	printMsgOnStop(true)
@@ -225,6 +270,288 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all, invent
 	return err
 }
 
+func (in *ReportGenerator) QualifyReport(combinedData map[string][]byte, xlsx bool, output string) (err error) {
+	var cvs []*AnsibleResultCarrier
+	for _, each := range combinedData {
+		cv := NewAnsibleResultCarrier()
+		err = json.Unmarshal(each, &cv)
+		if err != nil {
+			return
+		}
+		cvs = append(cvs, cv)
+	}
+	var result []*QualifiedResult
+	for i := range result {
+		qr := NewQualifiedResult()
+		qr.LoadFrom(cvs[i])
+		result = append(result, qr)
+	}
+	sorter := NewQualifiedResultSorter(result)
+	sort.Sort(sorter)
+	result = sorter.Export()
+	if xlsx {
+		buf := excel.NewFile()
+		buf.SetSheetName(buf.GetSheetName(1), DEF_XLSX_SHEET)
+		/* ------------ WRITE TOP HEADER ------------ */
+		buf.MergeCell(DEF_XLSX_SHEET, "A1", "E1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "A1", "Basic")
+		buf.MergeCell(DEF_XLSX_SHEET, "F1", "H1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "F1", "Specification")
+		buf.MergeCell(DEF_XLSX_SHEET, "I1", "J1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "I1", "Location")
+		buf.MergeCell(DEF_XLSX_SHEET, "K1", "N1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "K1", "CPU")
+		buf.MergeCell(DEF_XLSX_SHEET, "O1", "P1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "O1", "Memory")
+		buf.MergeCell(DEF_XLSX_SHEET, "Q1", "R1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "Q1", "Disk")
+		buf.MergeCell(DEF_XLSX_SHEET, "S1", "W1")
+		buf.SetCellStr(DEF_XLSX_SHEET, "S1", "Network")
+		/* ------------ WRITE PRIMARY HEADER ------------ */
+		buf.MergeCell(DEF_XLSX_SHEET, "A2", "A3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "A2", "Name")
+		buf.MergeCell(DEF_XLSX_SHEET, "B2", "B3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "B2", "OS")
+		buf.MergeCell(DEF_XLSX_SHEET, "C2", "C3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "C2", "Department")
+		buf.MergeCell(DEF_XLSX_SHEET, "D2", "D3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "D2", "Type")
+		buf.MergeCell(DEF_XLSX_SHEET, "E2", "E3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "E2", "Comment")
+		buf.MergeCell(DEF_XLSX_SHEET, "F2", "F3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "F2", "Vendor")
+		buf.MergeCell(DEF_XLSX_SHEET, "G2", "G3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "G2", "Model")
+		buf.MergeCell(DEF_XLSX_SHEET, "H2", "H3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "H2", "Serial Num")
+		buf.MergeCell(DEF_XLSX_SHEET, "I2", "I3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "I2", "Rack Name")
+		buf.MergeCell(DEF_XLSX_SHEET, "J2", "J3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "J2", "Rack Slot")
+		buf.MergeCell(DEF_XLSX_SHEET, "K2", "K3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "K2", "Model")
+		buf.MergeCell(DEF_XLSX_SHEET, "L2", "L3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "L2", "Base Freq")
+		buf.MergeCell(DEF_XLSX_SHEET, "M2", "M3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "M2", "Count")
+		buf.MergeCell(DEF_XLSX_SHEET, "N2", "N3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "N2", "Cores")
+		buf.MergeCell(DEF_XLSX_SHEET, "O2", "O3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "O2", "DIMMs")
+		buf.MergeCell(DEF_XLSX_SHEET, "P2", "P3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "P2", "Capacity")
+		buf.MergeCell(DEF_XLSX_SHEET, "Q2", "R2")
+		buf.SetCellStr(DEF_XLSX_SHEET, "Q2", "Virtual Disks")
+		buf.SetCellStr(DEF_XLSX_SHEET, "Q3", "Name")
+		buf.SetCellStr(DEF_XLSX_SHEET, "R3", "Size")
+		buf.MergeCell(DEF_XLSX_SHEET, "S2", "S3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "S2", "Primary IP")
+		buf.MergeCell(DEF_XLSX_SHEET, "T2", "T3")
+		buf.SetCellStr(DEF_XLSX_SHEET, "T2", "IPMI Address")
+		buf.MergeCell(DEF_XLSX_SHEET, "U2", "W2")
+		buf.SetCellStr(DEF_XLSX_SHEET, "U2", "Logical Interfaces")
+		buf.SetCellStr(DEF_XLSX_SHEET, "U3", "Name")
+		buf.SetCellStr(DEF_XLSX_SHEET, "V3", "Member")
+		buf.SetCellStr(DEF_XLSX_SHEET, "W3", "MAC")
+		/* ------------ WRITE ROW ------------ */
+		row := 4
+		axisFactory := func(col rune, r int) string {
+			return fmt.Sprintf("%s%d", string(col), r)
+		}
+		for _, qr := range result {
+			lineHeight := 1
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('A', row), qr.Name)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('B', row), qr.OS)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('C', row), qr.Department)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('D', row), qr.Type)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('E', row), qr.Comment)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('F', row), qr.Vender)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('G', row), qr.Model)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('H', row), qr.SerialNumber)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('I', row), qr.RackName)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('J', row), qr.RackSlot)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('K', row), qr.CPUModel)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('L', row), qr.CPUBaseFreq)
+			buf.SetCellValue(DEF_XLSX_SHEET, axisFactory('M', row), qr.CPUCount)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('N', row), fmt.Sprintf("%d / %d", qr.CPUCores, qr.CPUThreads))
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('O', row), fmt.Sprintf("%d / %d", qr.PopulatedDIMMs, qr.MaximumDIMMs))
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('P', row), qr.InstalledMemory)
+			if h := len(qr.VirtualDisks); h > lineHeight {
+				lineHeight = h
+			}
+			for vdi := range qr.VirtualDisks {
+				buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('Q', row+vdi), qr.VirtualDisks[vdi].Name)
+				buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('R', row+vdi), qr.VirtualDisks[vdi].Size)
+			}
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('S', row), qr.PrimaryIPAddress)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('T', row), qr.IPMIAddress)
+			var h int
+			for lii := range qr.LogicalInterfaces {
+				length := len(qr.LogicalInterfaces[lii].Members)
+				buf.MergeCell(DEF_XLSX_SHEET, axisFactory('U', row+h), axisFactory('U', row+h+length-1))
+				buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('U', row+h), qr.LogicalInterfaces[lii].Name)
+				for limi := range qr.LogicalInterfaces[lii].Members {
+					buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('V', row+h+limi), qr.LogicalInterfaces[lii].Members[limi].Name)
+					buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('W', row+h+limi), qr.LogicalInterfaces[lii].Members[limi].MACAddress)
+				}
+				h += length
+			}
+			if h > lineHeight {
+				lineHeight = h
+			}
+			if lineHeight > 1 {
+				cols2align := "ABCDEFGHIJKLMNOPST"
+				for _, each := range cols2align {
+					buf.MergeCell(DEF_XLSX_SHEET, axisFactory(each, row), axisFactory(each, row+lineHeight-1))
+				}
+			}
+			row += lineHeight
+		}
+		err = buf.SaveAs(output)
+		return err
+	}
+	var dAtA []byte
+	dAtA, err = json.Marshal(result)
+	if err != nil {
+		return
+	}
+	r := bytes.NewReader(dAtA)
+	var fi *os.File
+	fi, err = os.Create(output)
+	if err != nil {
+		return
+	}
+	_, err = io.Copy(fi, r)
+	return err
+}
+
 func NewReportGenerator(storage core.Storage) *ReportGenerator {
 	return &ReportGenerator{NewInventoryFromStorage(storage)}
+}
+
+type LogicalInterface struct {
+	Name    string                    `json:"name"`
+	Type    string                    `json:"type"`
+	Members []*LogicalInterfaceMember `json:"members"`
+}
+
+func NewLogicalInterface() *LogicalInterface {
+	return new(LogicalInterface)
+}
+
+type LogicalInterfaceMember struct {
+	Name       string `json:"name"`
+	MACAddress string `json:"mac_address"`
+}
+
+func NewLogicalInterfaceMember() *LogicalInterfaceMember {
+	return new(LogicalInterfaceMember)
+}
+
+// QualifiedResult is a qualified struct of AnsibleResultCarrier. All
+// fields are meant to be explicitly present in JSON output.
+type QualifiedResult struct {
+	Name              string              `json:"name"`
+	OS                string              `json:"os"`
+	Department        string              `json:"department"`
+	Type              string              `json:"type"`
+	Comment           string              `json:"comment"`
+	Vender            string              `json:"vender"`
+	Model             string              `json:"model"`
+	SerialNumber      string              `json:"serial_number"`
+	RackName          string              `json:"rack_name"`
+	RackSlot          string              `json:"rack_slot"`
+	CPUModel          string              `json:"cpu_model"`
+	CPUBaseFreq       string              `json:"cpu_base_freq"`
+	CPUCount          uint                `json:"cpu_count"`
+	CPUCores          uint                `json:"cpu_cores"`
+	CPUThreads        uint                `json:"cpu_threads"`
+	PopulatedDIMMs    uint                `json:"populated_dimms"`
+	MaximumDIMMs      uint                `json:"maximum_dimms"`
+	InstalledMemory   string              `json:"installed_memory"`
+	VirtualDisks      []*IPMIVirtualDisk  `json:"virtual_disks"`
+	PhysicalDisks     []*IPMIPhysicalDisk `json:"physical_disks"`
+	PrimaryIPAddress  string              `json:"primary_ip_address"`
+	IPMIAddress       string              `json:"ipmi_address"`
+	LogicalInterfaces []*LogicalInterface `json:"logical_intfs"`
+}
+
+func (in *QualifiedResult) LoadFrom(cv *AnsibleResultCarrier) {
+	in.Name = cv.NodeName
+	if cv.Distribution == "OpenBSD" {
+		in.OS = fmt.Sprintf("%s %s", cv.Distribution, cv.DistributionRelease)
+	} else {
+		in.OS = fmt.Sprintf("%s %s", cv.Distribution, cv.DistributionVersion)
+	}
+	in.Department = cv.Department
+	switch cv.VirtualizationType {
+	case "NA":
+		in.Type = "Physical"
+	case "?":
+		in.Type = "(Not Sure)"
+	default:
+		in.Type = "Virtual"
+	}
+	in.Comment = cv.Comment
+	in.Vender = cv.SystemVendor
+	in.Model = cv.ProductName
+	in.SerialNumber = cv.ProductSerial
+	in.RackName = cv.IPMIRackName
+	in.RackSlot = cv.IPMIRackSlot
+	cpu := strings.Split(cv.Processor[len(cv.Processor)-1], "@")
+	in.CPUModel = strings.TrimSpace(cpu[0])
+	in.CPUBaseFreq = strings.TrimSpace(cpu[1])
+	in.CPUCount = cv.ProcessorCount
+	in.CPUCores = cv.ProcessorCount * cv.ProcessorCores
+	in.CPUThreads = cv.ProcessorVCPUs
+	in.PopulatedDIMMs = cv.IPMIPopulatedDIMMs
+	in.MaximumDIMMs = cv.IPMIMaxDIMMs
+	in.InstalledMemory = cv.IPMIMemoryInstalled
+	in.VirtualDisks = cv.IPMIVirtualDisks
+	in.PhysicalDisks = cv.IPMIPhysicalDisks
+	if cv.DefaultIPv4 != nil {
+		in.PrimaryIPAddress = cv.DefaultIPv4.Address
+	}
+	in.IPMIAddress = cv.IPMIAddress
+	for k, v := range cv.Interfaces {
+		intf := NewLogicalInterface()
+		intf.Name = k
+		intf.Type = v.Type
+		switch intf.Type {
+		case "bonding":
+			for _, each := range v.Slaves {
+				newMember := NewLogicalInterfaceMember()
+				newMember.Name = each
+				newMember.MACAddress = cv.Interfaces[each].MACAddress
+				intf.Members = append(intf.Members, newMember)
+			}
+			in.LogicalInterfaces = append(in.LogicalInterfaces, intf)
+		}
+	}
+}
+
+func NewQualifiedResult() *QualifiedResult {
+	return new(QualifiedResult)
+}
+
+type QualifiedResultSorter []*QualifiedResult
+
+func (s QualifiedResultSorter) Len() int {
+	return len(s)
+}
+
+func (s QualifiedResultSorter) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s QualifiedResultSorter) Less(i, j int) bool {
+	return s[i].Name < s[j].Name
+}
+
+func (s QualifiedResultSorter) Export() []*QualifiedResult {
+	return s
+}
+
+func NewQualifiedResultSorter(in []*QualifiedResult) QualifiedResultSorter {
+	return in
 }
