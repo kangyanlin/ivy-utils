@@ -18,11 +18,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-
-	terminal "golang.org/x/crypto/ssh/terminal"
 )
 
 // Spinner types.
@@ -51,22 +49,23 @@ type Spinner struct {
 	Prefix string
 	Suffix string
 	Writer io.Writer
-	NoTTY  bool
+	mu     sync.Mutex
 	frames []rune
+	length int
 	pos    int
-	active uint64
+	active uint32
 }
 
 // Start activates the spinner
 func (sp *Spinner) Start() *Spinner {
-	if atomic.LoadUint64(&sp.active) > 0 {
+	if atomic.LoadUint32(&sp.active) > 0 {
 		return sp
 	}
-	atomic.StoreUint64(&sp.active, 1)
+	atomic.StoreUint32(&sp.active, 1)
 	go func() {
-		for atomic.LoadUint64(&sp.active) > 0 {
-			fmt.Fprintf(sp.Writer, "\r\033[K%s%s%s", sp.Prefix, sp.next(), sp.Suffix)
-			time.Sleep(200 * time.Millisecond)
+		for atomic.LoadUint32(&sp.active) > 0 {
+			fmt.Fprintf(sp.Writer, "\r\033[K%s%s%s", sp.Prefix, sp.Next(), sp.Suffix)
+			time.Sleep(333 * time.Millisecond)
 		}
 	}()
 	return sp
@@ -74,22 +73,47 @@ func (sp *Spinner) Start() *Spinner {
 
 // SetCharset sets custom spinner character set
 func (sp *Spinner) SetCharset(frames string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 	sp.frames = []rune(frames)
+	sp.length = len(sp.frames)
 }
 
 // Stop stops and clear-up the spinner
 func (sp *Spinner) Stop() bool {
-	if x := atomic.SwapUint64(&sp.active, 0); x > 0 {
+	if x := atomic.SwapUint32(&sp.active, 0); x > 0 {
 		fmt.Fprintf(sp.Writer, "\r\033[K")
 		return true
 	}
 	return false
 }
 
-func (sp *Spinner) next() string {
-	r := sp.frames[sp.pos%len(sp.frames)]
+// Current returns the current rune in the sequence.
+func (sp *Spinner) Current() string {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	r := sp.frames[sp.pos%sp.length]
+	return string(r)
+}
+
+// Next returns the next rune in the sequence.
+func (sp *Spinner) Next() string {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	r := sp.frames[sp.pos%sp.length]
 	sp.pos++
 	return string(r)
+}
+
+// Reset the spinner to its initial frame.
+func (sp *Spinner) Reset() {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.pos = 0
+}
+
+func (sp *Spinner) run() {
+
 }
 
 // NewSpinner creates a new spinner instance
@@ -98,8 +122,5 @@ func NewSpinner() *Spinner {
 		Writer: os.Stderr,
 	}
 	s.SetCharset(Default)
-	if !terminal.IsTerminal(syscall.Stderr) {
-		s.NoTTY = true
-	}
 	return s
 }

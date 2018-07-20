@@ -25,7 +25,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	excel "github.com/360EntSecGroup-Skylar/excelize"
 	core "github.com/universonic/ivy-utils/pkg/storage/core"
@@ -197,7 +196,7 @@ func (in *ReportGenerator) GenerateAndSaveAs(selectedHosts []string, all bool, m
 	printMsgOnStop(true)
 	sp.Prefix = fmt.Sprintf("Collect host information (2/%d): ", numOfTasks)
 	sp.Start()
-	at0 := NewAnsibleTask("canonical", inventoryFile)
+	at0 := NewAnsibleTask("canonical", inventoryFile, true)
 	at1 := NewAnsibleTask("ipmi", inventoryFile)
 	ansibleTask := NewParallelTasks([]Task{at0, at1}, func() interface{} {
 		result, err := merge(at0.Result, at1.Result)
@@ -281,7 +280,7 @@ func (in *ReportGenerator) QualifyReport(combinedData map[string][]byte, xlsx bo
 		cvs = append(cvs, cv)
 	}
 	var result []*QualifiedResult
-	for i := range result {
+	for i := range cvs {
 		qr := NewQualifiedResult()
 		qr.LoadFrom(cvs[i])
 		result = append(result, qr)
@@ -319,7 +318,7 @@ func (in *ReportGenerator) QualifyReport(combinedData map[string][]byte, xlsx bo
 		buf.MergeCell(DEF_XLSX_SHEET, "E2", "E3")
 		buf.SetCellStr(DEF_XLSX_SHEET, "E2", "Comment")
 		buf.MergeCell(DEF_XLSX_SHEET, "F2", "F3")
-		buf.SetCellStr(DEF_XLSX_SHEET, "F2", "Vendor")
+		buf.SetCellStr(DEF_XLSX_SHEET, "F2", "Manufacturer")
 		buf.MergeCell(DEF_XLSX_SHEET, "G2", "G3")
 		buf.SetCellStr(DEF_XLSX_SHEET, "G2", "Model")
 		buf.MergeCell(DEF_XLSX_SHEET, "H2", "H3")
@@ -365,7 +364,7 @@ func (in *ReportGenerator) QualifyReport(combinedData map[string][]byte, xlsx bo
 			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('C', row), qr.Department)
 			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('D', row), qr.Type)
 			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('E', row), qr.Comment)
-			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('F', row), qr.Vender)
+			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('F', row), qr.Manufacturer)
 			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('G', row), qr.Model)
 			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('H', row), qr.SerialNumber)
 			buf.SetCellStr(DEF_XLSX_SHEET, axisFactory('I', row), qr.RackName)
@@ -456,7 +455,7 @@ type QualifiedResult struct {
 	Department        string              `json:"department"`
 	Type              string              `json:"type"`
 	Comment           string              `json:"comment"`
-	Vender            string              `json:"vender"`
+	Manufacturer      string              `json:"manufacturer"`
 	Model             string              `json:"model"`
 	SerialNumber      string              `json:"serial_number"`
 	RackName          string              `json:"rack_name"`
@@ -477,15 +476,15 @@ type QualifiedResult struct {
 }
 
 func (in *QualifiedResult) LoadFrom(cv *AnsibleResultCarrier) {
-	in.Name = cv.NodeName
+	in.Name = cv.InventoryHostname
 	if cv.Distribution == "OpenBSD" {
 		in.OS = fmt.Sprintf("%s %s", cv.Distribution, cv.DistributionRelease)
 	} else {
 		in.OS = fmt.Sprintf("%s %s", cv.Distribution, cv.DistributionVersion)
 	}
 	in.Department = cv.Department
-	switch cv.VirtualizationType {
-	case "NA":
+	switch cv.VirtualizationRole {
+	case "NA", "host", "":
 		in.Type = "Physical"
 	case "?":
 		in.Type = "(Not Sure)"
@@ -493,17 +492,40 @@ func (in *QualifiedResult) LoadFrom(cv *AnsibleResultCarrier) {
 		in.Type = "Virtual"
 	}
 	in.Comment = cv.Comment
-	in.Vender = cv.SystemVendor
-	in.Model = cv.ProductName
-	in.SerialNumber = cv.ProductSerial
-	in.RackName = cv.IPMIRackName
-	in.RackSlot = cv.IPMIRackSlot
-	cpu := strings.Split(cv.Processor[len(cv.Processor)-1], "@")
-	in.CPUModel = strings.TrimSpace(cpu[0])
-	in.CPUBaseFreq = strings.TrimSpace(cpu[1])
-	in.CPUCount = cv.ProcessorCount
-	in.CPUCores = cv.ProcessorCount * cv.ProcessorCores
-	in.CPUThreads = cv.ProcessorVCPUs
+	in.Manufacturer = cv.IPMIManufacturer
+	in.Model = cv.IPMIModel
+	in.SerialNumber = cv.IPMISerialNumber
+	if cv.IPMISystemLocation != nil {
+		in.RackName = cv.IPMISystemLocation.RackName
+		in.RackSlot = cv.IPMISystemLocation.RackSlot
+	}
+	cpuAllTheSame := true
+	var (
+		cpuModel             string
+		cpuFreq              string
+		cpuCores, cpuThreads uint
+		cpuCount             uint
+	)
+	for _, each := range cv.IPMICPUs {
+		if cpuModel == "" {
+			cpuModel = each.Name
+			cpuFreq = each.BaseClockSpeed
+		}
+		if each.Name != cpuModel {
+			cpuAllTheSame = false
+		}
+		cpuCores += each.Cores
+		cpuThreads += each.Threads
+		cpuCount++
+	}
+	if !cpuAllTheSame {
+		cpuModel += " and others"
+	}
+	in.CPUModel = cpuModel
+	in.CPUBaseFreq = cpuFreq
+	in.CPUCount = cpuCount
+	in.CPUCores = cpuCores
+	in.CPUThreads = cpuThreads
 	in.PopulatedDIMMs = cv.IPMIPopulatedDIMMs
 	in.MaximumDIMMs = cv.IPMIMaxDIMMs
 	in.InstalledMemory = cv.IPMIMemoryInstalled

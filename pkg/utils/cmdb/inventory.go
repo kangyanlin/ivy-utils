@@ -36,6 +36,10 @@ func (in *Inventory) Add(host core.Host) error {
 	if !ok {
 		host.ExtraInfo["comment"] = ""
 	}
+	_, ok = host.ExtraInfo["department"]
+	if !ok {
+		host.ExtraInfo["department"] = ""
+	}
 	return in.Storage.CreateHost(host)
 }
 
@@ -77,10 +81,18 @@ func (in *Inventory) Update(host core.Host) error {
 		if _, ok := h.ExtraInfo["comment"]; !ok {
 			h.ExtraInfo["comment"] = ""
 		}
+		if _, ok := h.ExtraInfo["department"]; !ok {
+			h.ExtraInfo["department"] = ""
+		}
 		if len(host.ExtraInfo) == 0 {
 			host.ExtraInfo = h.ExtraInfo
-		} else if _, ok := host.ExtraInfo["comment"]; !ok {
-			host.ExtraInfo["comment"] = h.ExtraInfo["comment"]
+		} else {
+			if _, ok := host.ExtraInfo["comment"]; !ok {
+				host.ExtraInfo["comment"] = h.ExtraInfo["comment"]
+			}
+			if _, ok := host.ExtraInfo["department"]; !ok {
+				host.ExtraInfo["department"] = h.ExtraInfo["department"]
+			}
 		}
 		return host, nil
 	})

@@ -83,6 +83,7 @@ type Task interface {
 }
 
 type AnsibleTask struct {
+	required      bool
 	Module        string
 	InventoryFile string
 	Result        map[string][]byte
@@ -95,7 +96,7 @@ func (in *AnsibleTask) Execute() error {
 	}
 	cmd := exec.Command("ansible", "all", "-m", in.Module, "-i", in.InventoryFile, "-t", dir)
 	reason, err := cmd.Output()
-	if err != nil {
+	if err != nil && in.required {
 		parsedReason := bytes.Split(reason, []byte("\n"))
 		var finalReason []byte
 		if len(parsedReason) > 16 {
@@ -132,8 +133,13 @@ func (in *AnsibleTask) GetResult() interface{} {
 	return in.Result
 }
 
-func NewAnsibleTask(moduleName, inventoryFile string) *AnsibleTask {
+func NewAnsibleTask(moduleName, inventoryFile string, optional ...bool) *AnsibleTask {
+	required := true
+	if len(optional) != 0 && optional[0] {
+		required = false
+	}
 	return &AnsibleTask{
+		required:      required,
 		Module:        moduleName,
 		InventoryFile: inventoryFile,
 		Result:        make(map[string][]byte),
@@ -154,8 +160,11 @@ func (in *InventoryExportTask) Execute() (err error) {
 		} else {
 			sshAddr = each.SSHAddress
 		}
-		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\" ipmi_addr=\"%s\" ipmi_user=\"%s\" ipmi_pass=\"%s\"",
-			each.Hostname, sshAddr, each.SSHPort, each.SSHUser, each.IPMIAddress, each.IPMIUser, each.IPMIPassword)
+		rst += fmt.Sprintf("%s ansible_connection=\"smart\" ansible_host=\"%s\" ansible_port=%d ansible_user=\"%s\"",
+			each.Hostname, sshAddr, each.SSHPort, each.SSHUser)
+		if each.IPMIAddress != "" && each.IPMIUser != "" && each.IPMIPassword != "" {
+			rst += fmt.Sprintf(" ipmi_addr=\"%s\" ipmi_user=\"%s\" ipmi_pass=\"%s\"", each.IPMIAddress, each.IPMIUser, each.IPMIPassword)
+		}
 		for k, v := range each.ExtraInfo {
 			rst += fmt.Sprintf(" %s=\"%v\"", strings.Replace(k, " ", "_", -1), v)
 		}

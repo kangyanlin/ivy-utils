@@ -56,6 +56,7 @@ class ActionModule(ActionBase):
         except Exception as e:
             self._fail_with_message(e)
 
+        self._result.ansible_facts['ansible_inventory_hostname'] = task_vars['inventory_hostname']
         try:
             self._result.ansible_facts['ansible_department'] = task_vars['department']
         except KeyError:
@@ -82,10 +83,20 @@ class ActionModule(ActionBase):
             return kv.split(':')[1].strip()
 
         lines = []
-        try:
-            lines = subprocess.check_output(['ipmitool', '-I', 'lanplus', '-H', self._ipmi_addr, '-U', self._ipmi_user, '-P', self._ipmi_pass, 'fru', 'print']).strip().split('\n')
-        except subprocess.CalledProcessError as e:
-            self._fail_with_message('Could not initialize IPMI adapter due to: %s' % e)
+        failure = 0
+        reason = None
+        while failure < 3:
+            try:
+                lines = subprocess.check_output(['ipmitool', '-I', 'lanplus', '-H', self._ipmi_addr, '-U', self._ipmi_user, '-P', self._ipmi_pass, 'fru', 'print']).strip().split('\n')
+                break
+            except subprocess.CalledProcessError as e:
+                if e.returncode == 1 and 'FRU' in e.output:
+                    lines = e.output.strip().split('\n')
+                    break
+                reason = e
+                failure += 1
+        if failure >= 3:
+            self._fail_with_message('Could not initialize IPMI adapter due to: %s' % reason)
             return adapter
         part_number = None
         product_name = None

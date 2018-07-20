@@ -35,11 +35,29 @@ class ActionModule(ActionBase):
         if not self._ipmi_addr or not self._ipmi_user or not self._ipmi_pass:
             result['failed'] = True
             result['msg'] = 'Invalid IPMI endpoint or credential'
-        try:
-            subprocess.check_output(['ipmitool', '-I', 'lanplus', '-H', self._ipmi_addr, '-U', self._ipmi_user, '-P', self._ipmi_pass, 'fru', 'print'])
-        except subprocess.CalledProcessError as e:
+        failure = 0
+        reason = ''
+        warning = ''
+        while failure < 3:
+            try:
+                subprocess.check_output(['ipmitool', '-I', 'lanplus', '-H', self._ipmi_addr, '-U', self._ipmi_user, '-P', self._ipmi_pass, 'fru', 'print'])
+                break
+            except subprocess.CalledProcessError as e:
+                if e.returncode == 1 and 'FRU' in e.output:
+                    warning = 'Information was successfully retrieved, but got unexpected exit code 1'
+                    break
+                reason = str(e)
+                failure += 1
+        if failure >= 3:
             result['failed'] = True
-            result['msg'] = str(e)
-            return result
-        result['ping'] = 'pong'
+            result['msg'] = reason
+        else:
+            result['ping'] = 'pong'
+            if warning:
+                if 'warning' in result.keys():
+                    result['warning'].append(warning)
+                else:
+                    result['warning'] = [warning]
+        if failure:
+            result['retries'] = failure
         return result

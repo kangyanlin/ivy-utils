@@ -245,6 +245,17 @@ type AnsibleSELinux struct {
 	Status string `json:"status,omitempty"`
 }
 
+type IPMICPU struct {
+	BaseClockSpeed        string `json:"base_clock_speed,omitempty"`
+	Cores                 uint   `json:"cores,omitempty"`
+	ExternalBusClockSpeed string `json:"external_bus_clock_speed,omitempty"`
+	Manufacturer          string `json:"manufacturer,omitempty"`
+	Name                  string `json:"name,omitempty"`
+	Status                string `json:"status,omitempty"`
+	Threads               uint   `json:"threads,omitempty"`
+	TurboClockSpeed       string `json:"turbo_clock_speed,omitempty"`
+}
+
 type IPMIDIMM struct {
 	Manufacturer string `json:"manufacturer,omitempty"`
 	Model        string `json:"model,omitempty"`
@@ -275,6 +286,15 @@ type IPMIPhysicalDisk struct {
 	Size         string `json:"size,omitempty"`
 	State        string `json:"state,omitempty"`
 	Status       string `json:"status,omitempty"`
+}
+
+type IPMISystemLocation struct {
+	Aisle      string `json:"aisle,omitempty"`
+	Datacenter string `json:"datacenter,omitempty"`
+	DeviceSize string `json:"device_size,omitempty"`
+	RackName   string `json:"rack_name,omitempty"`
+	RackSlot   string `json:"rack_slot,omitempty"`
+	RoomName   string `json:"room_name,omitempty"`
 }
 
 type AnsibleFacts struct {
@@ -358,27 +378,24 @@ type AnsibleFacts struct {
 	VirtualizationType         string                              `json:"ansible_virtualization_type,omitempty"`
 	GatherSubset               []string                            `json:"gather_subset,omitempty"`
 	// IPMI module entities
-	IPMIType            string              `json:"ipmi_type,omitempty"`
 	IPMIAddress         string              `json:"ipmi_address,omitempty"`
-	IPMIModel           string              `json:"ipmi_model,omitempty"`
-	IPMIBiosVersion     string              `json:"ipmi_bios_version,omitempty"`
-	IPMIBiosBootMode    string              `json:"ipmi_bios_boot_mode,omitempty"`
-	IPMIHostname        string              `json:"ipmi_hostname,omitempty"`
-	IPMIAisle           string              `json:"ipmi_system_location_aisle,omitempty"`
-	IPMIDatacenter      string              `json:"ipmi_system_location_datacenter,omitempty"`
-	IPMIRackName        string              `json:"ipmi_system_location_rack_name,omitempty"`
-	IPMIRackSlot        string              `json:"ipmi_system_location_rack_slot,omitempty"`
-	IPMIRoomName        string              `json:"ipmi_system_location_room_name,omitempty"`
-	IPMIDeviceSize      string              `json:"ipmi_device_size,omitempty"`
+	IPMICPUs            []*IPMICPU          `json:"ipmi_cpus,omitempty"`
 	IPMIDIMMs           []*IPMIDIMM         `json:"ipmi_dimms,omitempty"`
 	IPMIMemoryInstalled string              `json:"ipmi_installed_memory,omitempty"`
+	IPMIManufacturer    string              `json:"ipmi_manufacturer,omitempty"`
 	IPMIMaxDIMMs        uint                `json:"ipmi_maximum_dimms,omitempty"`
-	IPMIPopulatedDIMMs  uint                `json:"ipmi_populated_dimms,omitempty"`
-	IPMIVirtualDisks    []*IPMIVirtualDisk  `json:"ipmi_virtual_disks,omitempty"`
+	IPMIModel           string              `json:"ipmi_model,omitempty"`
 	IPMIPhysicalDisks   []*IPMIPhysicalDisk `json:"ipmi_physical_disks,omitempty"`
+	IPMIPopulatedDIMMs  uint                `json:"ipmi_populated_dimms,omitempty"`
+	IPMISerialNumber    string              `json:"ipmi_serial_num,omitempty"`
+	IPMISystemLocation  *IPMISystemLocation `json:"ipmi_system_location,omitempty"`
+	IPMIVirtualDisks    []*IPMIVirtualDisk  `json:"ipmi_virtual_disks,omitempty"`
 	// Those are duplicated from hostvars
-	Department string `json:"ansible_department,omitempty"`
-	Comment    string `json:"ansible_comment,omitempty"`
+	InventoryHostname string `json:"ansible_inventory_hostname,omitempty"`
+	Department        string `json:"ansible_department,omitempty"`
+	Comment           string `json:"ansible_comment,omitempty"`
+	// Ansible reason of failure
+	Message string `json:"msg,omitempty"`
 }
 
 func NewAnsibleFacts() *AnsibleFacts {

@@ -35,7 +35,7 @@ var manageCmd = &cobra.Command{
 			if len(kv) != 2 {
 				return fmt.Errorf("Invalid key-value pair: %s", each)
 			}
-			host.ExtraInfo[kv[0]] = kv[1]
+			host.ExtraInfo[strings.Replace(kv[0], " ", "_", -1)] = kv[1]
 		}
 		return nil
 	},
@@ -55,6 +55,9 @@ var manageCmd = &cobra.Command{
 		if hostComment != "" {
 			host.ExtraInfo["comment"] = hostComment
 		}
+		if hostDept != "" {
+			host.ExtraInfo["department"] = hostDept
+		}
 		inventory := cmdbutil.NewInventoryFromStorage(storage)
 		if isAction {
 			if len(args) == 0 {
@@ -65,17 +68,21 @@ var manageCmd = &cobra.Command{
 			verify := func(hostname string) {
 				host, err := inventory.Get(hostname)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Could not retrive data from database with key '%s' due to: %v\n", hostname, err)
+					fmt.Fprintf(os.Stderr, "Could not retrieve data from database with key '%s' due to: %v\n", hostname, err)
 					os.Exit(12)
 				}
 				fmt.Fprintf(os.Stdout, "%s\n", host.CanonicalString())
 			}
 			if addHost {
+				if host.IPMIAddress == "" || host.IPMIUser == "" || host.IPMIPassword == "" {
+					fmt.Fprintf(os.Stderr, "IPMI endpoint and credential are required\n")
+					os.Exit(2)
+				}
 				err = inventory.Add(*host)
 			} else if removeHost {
 				err = inventory.Delete(host.Hostname)
 				if err == nil {
-					fmt.Fprintf(os.Stdout, "Deleted.\n")
+					fmt.Fprintf(os.Stdout, "Successfully deleted.\n")
 					goto SKIP_VALIDATION
 				}
 			} else if updateHost {
@@ -93,7 +100,7 @@ var manageCmd = &cobra.Command{
 		if allHosts {
 			hosts, err = inventory.List()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could not retrive data from database due to: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Could not retrieve data from database due to: %v\n", err)
 				os.Exit(12)
 			}
 			goto FINALIZE
@@ -101,7 +108,7 @@ var manageCmd = &cobra.Command{
 			for _, each := range args {
 				host, err := inventory.Get(each)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "Could not retrive data from database with key '%s' due to: %v\n", args[0], err)
+					fmt.Fprintf(os.Stderr, "Could not retrieve data from database with key '%s' due to: %v\n", args[0], err)
 					os.Exit(12)
 				}
 				hosts = append(hosts, host)
@@ -118,7 +125,7 @@ var manageCmd = &cobra.Command{
 
 var (
 	host                                           = storagecore.NewHost()
-	hostComment                                    string
+	hostComment, hostDept                          string
 	addHost, removeHost, updateHost, allHosts, yes bool
 	extraInfoOrig                                  []string
 )
@@ -152,9 +159,6 @@ func init() {
 	manageCmd.Flags().BoolVar(
 		&allHosts, "all", allHosts, "Select all existing hosts. It will be ignored if an action flag was specified.",
 	)
-	// manageCmd.Flags().BoolVarP(
-	// 	&yes, "yes", "y", yes, "Enforcing process to proceed your request anyway.",
-	// )
 	manageCmd.Flags().StringVar(
 		&host.SSHAddress, "ssh-address", host.SSHAddress, "IP address that SSH service is listening on",
 	)
@@ -175,6 +179,9 @@ func init() {
 	)
 	manageCmd.Flags().StringVar(
 		&hostComment, "comment", "", "Comment of the node",
+	)
+	manageCmd.Flags().StringVar(
+		&hostDept, "department", "", "Department of the node",
 	)
 	manageCmd.Flags().StringSliceVar(
 		&extraInfoOrig, "extra-info", extraInfoOrig, "Comma-seperated key-value pair in 'key=value' format",
